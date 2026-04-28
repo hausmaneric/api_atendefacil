@@ -47,9 +47,18 @@ class UserOut(BaseModel):
     email: EmailStr
     company_id: int
     role: str
+    is_active: bool
 
     class Config:
         from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    role: str = Field(pattern="^(admin|staff)$")
+    password: str | None = Field(default=None, min_length=6, max_length=120)
+    is_active: bool = True
 
 
 class ClientCreate(BaseModel):
@@ -74,6 +83,10 @@ class ClientOut(ClientCreate):
 class ServiceCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     default_price: float | None = None
+
+
+class ServiceUpdate(ServiceCreate):
+    pass
 
 
 class ServiceOut(BaseModel):

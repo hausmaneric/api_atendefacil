@@ -32,9 +32,11 @@ from .schemas import (
     Token,
     UserOut,
     UserCreate,
+    UserUpdate,
     ReminderAutomationOut,
     ServiceCreate,
     ServiceOut,
+    ServiceUpdate,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -225,6 +227,49 @@ def list_users(
     )
 
 
+@app.put("/users/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id, User.company_id == current_user.company_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    existing = (
+        db.query(User)
+        .filter(func.lower(User.email) == payload.email.lower(), User.id != user_id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already exists")
+    user.name = payload.name.strip()
+    user.email = payload.email.lower()
+    user.role = payload.role
+    user.is_active = payload.is_active
+    if payload.password:
+        user.password_hash = hash_password(payload.password)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.post("/users/{user_id}/toggle-active", response_model=UserOut)
+def toggle_user_active(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id, User.company_id == current_user.company_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = not user.is_active
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @app.get("/companies/me", response_model=CompanyOut)
 def get_my_company(current_user: User = Depends(get_current_user)):
     return current_user.company
@@ -277,6 +322,37 @@ def list_services(
         .order_by(Service.name.asc())
         .all()
     )
+
+
+@app.put("/services/{service_id}", response_model=ServiceOut)
+def update_service(
+    service_id: int,
+    payload: ServiceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    service = db.query(Service).filter(Service.id == service_id, Service.company_id == current_user.company_id).first()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    service.name = payload.name.strip()
+    service.default_price = payload.default_price
+    db.commit()
+    db.refresh(service)
+    return service
+
+
+@app.delete("/services/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_service(
+    service_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    service = db.query(Service).filter(Service.id == service_id, Service.company_id == current_user.company_id).first()
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    db.delete(service)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/clients", response_model=list[ClientOut])
