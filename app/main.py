@@ -19,9 +19,11 @@ from .models import Service
 from .schemas import (
     AppointmentCreate,
     AppointmentOut,
+    AppointmentUpdate,
     ClientCreate,
     ClientHistoryOut,
     ClientOut,
+    ClientUpdate,
     CompanyAdminCreate,
     CompanyOut,
     LoginInput,
@@ -304,6 +306,38 @@ def get_client_history(client_id: int, db: Session = Depends(get_db), current_us
     return ClientHistoryOut(client=client, appointments=appointments)
 
 
+@app.put("/clients/{client_id}", response_model=ClientOut)
+def update_client(
+    client_id: int,
+    payload: ClientUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    client = db.query(Client).filter(Client.id == client_id, Client.company_id == current_user.company_id).first()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    client.name = payload.name.strip()
+    client.phone = payload.phone
+    client.notes = payload.notes
+    db.commit()
+    db.refresh(client)
+    return client
+
+
+@app.delete("/clients/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_client(
+    client_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    client = db.query(Client).filter(Client.id == client_id, Client.company_id == current_user.company_id).first()
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    db.delete(client)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/clients/{client_id}/report.pdf")
 def get_client_report_pdf(
     client_id: int,
@@ -376,6 +410,52 @@ def list_appointments(
     if client_id is not None:
         query = query.filter(Appointment.client_id == client_id)
     return query.order_by(Appointment.service_date.desc()).all()
+
+
+@app.put("/appointments/{appointment_id}", response_model=AppointmentOut)
+def update_appointment(
+    appointment_id: int,
+    payload: AppointmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    appointment = (
+        db.query(Appointment)
+        .filter(Appointment.id == appointment_id, Appointment.company_id == current_user.company_id)
+        .first()
+    )
+    if appointment is None:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    appointment.description = payload.description.strip()
+    appointment.amount = payload.amount
+    appointment.photo_url = payload.photo_url
+    appointment.signature_data = payload.signature_data
+    if payload.service_date is not None:
+        appointment.service_date = payload.service_date
+    appointment.follow_up_date = payload.follow_up_date
+    if payload.is_done is not None:
+        appointment.is_done = payload.is_done
+    db.commit()
+    db.refresh(appointment)
+    return appointment
+
+
+@app.delete("/appointments/{appointment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_appointment(
+    appointment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    appointment = (
+        db.query(Appointment)
+        .filter(Appointment.id == appointment_id, Appointment.company_id == current_user.company_id)
+        .first()
+    )
+    if appointment is None:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    db.delete(appointment)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/reminders", response_model=list[AppointmentOut])

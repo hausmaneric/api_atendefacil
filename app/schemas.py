@@ -29,6 +29,10 @@ class UserCreate(BaseModel):
     role: str = Field(pattern="^(admin|staff)$")
 
 
+class UserCreateApp(UserCreate):
+    pass
+
+
 class CompanyOut(BaseModel):
     id: int
     name: str
@@ -52,6 +56,10 @@ class ClientCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
     notes: str | None = Field(default=None, max_length=400)
+
+
+class ClientUpdate(ClientCreate):
+    pass
 
 
 class ClientOut(ClientCreate):
@@ -87,6 +95,16 @@ class AppointmentCreate(BaseModel):
     signature_data: str | None = None
     service_date: datetime | None = None
     follow_up_date: datetime | None = None
+
+
+class AppointmentUpdate(BaseModel):
+    description: str = Field(min_length=2, max_length=2000)
+    amount: float | None = None
+    photo_url: str | None = Field(default=None, max_length=255)
+    signature_data: str | None = None
+    service_date: datetime | None = None
+    follow_up_date: datetime | None = None
+    is_done: bool | None = None
 
 
 class AppointmentOut(BaseModel):
