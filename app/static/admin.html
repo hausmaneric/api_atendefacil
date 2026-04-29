@@ -115,6 +115,12 @@
         grid-template-columns: 1fr 1fr 1fr;
         gap: 16px;
       }
+      .executive {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 16px;
+      }
       .section {
         padding: 20px;
       }
@@ -131,6 +137,31 @@
         display: block;
         margin-bottom: 6px;
       }
+      .item-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .item-actions button {
+        width: auto;
+        padding: 10px 12px;
+        border-radius: 12px;
+      }
+      .executive .card {
+        padding: 20px;
+      }
+      .executive .value {
+        display: block;
+        font-size: 30px;
+        font-weight: 800;
+        margin-top: 8px;
+      }
+      .executive .hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 8px;
+      }
       .muted { color: var(--muted); }
       .hidden { display: none; }
       .status {
@@ -138,7 +169,7 @@
         color: var(--muted);
       }
       @media (max-width: 900px) {
-        .hero, .sections, .grid { grid-template-columns: 1fr; }
+        .hero, .sections, .grid, .executive { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -178,6 +209,29 @@
           <div class="card metric"><small>Receita</small><strong id="totalRevenue">R$ 0,00</strong></div>
         </div>
 
+        <div class="executive">
+          <div class="card">
+            <small>Ticket medio</small>
+            <span class="value" id="avgTicket">R$ 0,00</span>
+            <div class="hint">Receita por atendimento registrado</div>
+          </div>
+          <div class="card">
+            <small>Retornos atrasados</small>
+            <span class="value" id="lateCount">0</span>
+            <div class="hint">Clientes que precisam de atencao agora</div>
+          </div>
+          <div class="card">
+            <small>Equipe ativa</small>
+            <span class="value" id="activeUsers">0</span>
+            <div class="hint">Usuarios ativos nesta empresa</div>
+          </div>
+          <div class="card">
+            <small>Meta do dia</small>
+            <span class="value" id="goalToday">0%</span>
+            <div class="hint">Progresso sobre 5 atendimentos no dia</div>
+          </div>
+        </div>
+
         <div class="sections" style="margin-bottom:16px;">
           <section class="card section">
             <h2>Indicadores por atendente</h2>
@@ -200,6 +254,10 @@
           <section class="card section">
             <h2>Clientes</h2>
             <div id="clientsList" class="list"></div>
+          </section>
+          <section class="card section">
+            <h2>Atendimentos recentes</h2>
+            <div id="appointmentsList" class="list"></div>
           </section>
           <section class="card section">
             <h2>Lembretes</h2>

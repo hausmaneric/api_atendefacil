@@ -21,9 +21,14 @@
     totalAppointments: document.getElementById("totalAppointments"),
     appointmentsToday: document.getElementById("appointmentsToday"),
     totalRevenue: document.getElementById("totalRevenue"),
+    avgTicket: document.getElementById("avgTicket"),
+    lateCount: document.getElementById("lateCount"),
+    activeUsers: document.getElementById("activeUsers"),
+    goalToday: document.getElementById("goalToday"),
     staffMetricsList: document.getElementById("staffMetricsList"),
     automationList: document.getElementById("automationList"),
     clientsList: document.getElementById("clientsList"),
+    appointmentsList: document.getElementById("appointmentsList"),
     remindersList: document.getElementById("remindersList"),
     calendarList: document.getElementById("calendarList"),
     newUserName: document.getElementById("newUserName"),
@@ -56,6 +61,16 @@
 
   function setStatus(message) {
     els.authStatus.textContent = message;
+  }
+
+  async function request(path, options = {}) {
+    const response = await api(path, options);
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json") ? await response.json() : null;
+    if (!response.ok) {
+      throw new Error((data && data.detail) || "Falha na requisicao.");
+    }
+    return data;
   }
 
   async function login() {
@@ -100,18 +115,20 @@
       api(`/clients${search ? `?search=${search}` : ""}`),
       api("/reminders"),
       api("/services"),
+      api("/appointments"),
     ];
     if (state.role === "admin") {
       requests.push(api("/users"));
       requests.push(api("/analytics/staff"));
       requests.push(api("/automations/reminders/preview"));
     }
-    const [summaryRes, clientsRes, remindersRes, servicesRes, usersRes, staffRes, automationRes] = await Promise.all(requests);
+    const [summaryRes, clientsRes, remindersRes, servicesRes, appointmentsRes, usersRes, staffRes, automationRes] = await Promise.all(requests);
 
     const summary = await summaryRes.json();
     const clients = await clientsRes.json();
     const reminders = await remindersRes.json();
     const services = await servicesRes.json();
+    const appointments = await appointmentsRes.json();
     const users = usersRes ? await usersRes.json() : [];
     const staffMetrics = staffRes ? await staffRes.json() : [];
     const automation = automationRes ? await automationRes.json() : null;
@@ -120,6 +137,11 @@
     els.totalAppointments.textContent = summary.total_appointments ?? 0;
     els.appointmentsToday.textContent = summary.appointments_today ?? 0;
     els.totalRevenue.textContent = currency.format(summary.total_revenue ?? 0);
+    const avgTicket = summary.total_appointments ? (summary.total_revenue || 0) / summary.total_appointments : 0;
+    els.avgTicket.textContent = currency.format(avgTicket);
+    els.lateCount.textContent = automation?.late_count ?? 0;
+    els.activeUsers.textContent = users.filter((item) => item.is_active !== false).length;
+    els.goalToday.textContent = `${Math.min(100, Math.round(((summary.appointments_today || 0) / 5) * 100))}%`;
 
     els.clientsList.innerHTML = clients.length
       ? clients
@@ -128,10 +150,33 @@
               <div class="item">
                 <strong>${client.name}</strong>
                 <div class="muted">${client.phone || "Sem telefone"}</div>
+                <div class="muted">${client.notes || "Sem observacoes"}</div>
+                <div class="item-actions">
+                  <button class="secondary" data-client-edit="${client.id}">Editar</button>
+                  <button class="secondary" data-client-delete="${client.id}">Excluir</button>
+                </div>
               </div>`,
           )
           .join("")
       : '<div class="muted">Nenhum cliente encontrado.</div>';
+
+    els.appointmentsList.innerHTML = appointments.length
+      ? appointments
+          .slice(0, 12)
+          .map(
+            (item) => `
+              <div class="item">
+                <strong>${new Date(item.service_date).toLocaleString("pt-BR")}</strong>
+                <div>${item.description}</div>
+                <div class="muted">${item.amount ? currency.format(item.amount) : "Sem valor"}</div>
+                <div class="item-actions">
+                  <button class="secondary" data-appointment-edit="${item.id}">Editar</button>
+                  <button class="secondary" data-appointment-delete="${item.id}">Excluir</button>
+                </div>
+              </div>`,
+          )
+          .join("")
+      : '<div class="muted">Nenhum atendimento recente.</div>';
 
     els.remindersList.innerHTML = reminders.length
       ? reminders
@@ -141,6 +186,9 @@
                 <strong>${new Date(item.follow_up_date).toLocaleDateString("pt-BR")}</strong>
                 <div>${item.description}</div>
                 <div class="muted">${item.amount ? currency.format(item.amount) : "Sem valor"}</div>
+                <div class="item-actions">
+                  <button class="secondary" data-appointment-edit="${item.id}">Editar</button>
+                </div>
               </div>`,
           )
           .join("")
@@ -174,6 +222,7 @@
               <div class="item">
                 <strong>${service.name}</strong>
                 <div class="muted">${service.default_price ? currency.format(service.default_price) : "Sem preco padrao"}</div>
+                ${state.role === "admin" ? `<div class="item-actions"><button class="secondary" data-service-edit="${service.id}">Editar</button><button class="secondary" data-service-delete="${service.id}">Excluir</button></div>` : ""}
               </div>`,
           )
           .join("")
@@ -204,10 +253,14 @@
         ? users
             .map(
               (user) => `
-                <div class="item">
-                  <strong>${user.name}</strong>
-                  <div class="muted">${user.email}</div>
-                  <div class="muted">Perfil: ${user.role}</div>
+              <div class="item">
+                <strong>${user.name}</strong>
+                <div class="muted">${user.email}</div>
+                  <div class="muted">Perfil: ${user.role} • ${user.is_active ? "Ativo" : "Inativo"}</div>
+                  <div class="item-actions">
+                    <button class="secondary" data-user-edit="${user.id}">Editar</button>
+                    <button class="secondary" data-user-toggle="${user.id}">${user.is_active ? "Desativar" : "Ativar"}</button>
+                  </div>
                 </div>`,
             )
             .join("")
@@ -261,6 +314,92 @@
     await loadDashboard();
   }
 
+  async function editClient(id) {
+    const name = prompt("Nome do cliente:");
+    if (!name) return;
+    const phone = prompt("Telefone do cliente:") || "";
+    const notes = prompt("Observacoes do cliente:") || "";
+    await request(`/clients/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, phone, notes }),
+    });
+    await loadDashboard();
+  }
+
+  async function deleteClient(id) {
+    if (!confirm("Excluir este cliente e o historico vinculado?")) return;
+    await request(`/clients/${id}`, { method: "DELETE" });
+    await loadDashboard();
+  }
+
+  async function editAppointment(id) {
+    const description = prompt("Descricao do atendimento:");
+    if (!description) return;
+    const amountRaw = prompt("Valor (opcional):") || "";
+    const followUpDate = prompt("Data de retorno (YYYY-MM-DD ou vazio):") || "";
+    await request(`/appointments/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        description,
+        amount: amountRaw ? Number(amountRaw.replace(",", ".")) : null,
+        follow_up_date: followUpDate ? new Date(`${followUpDate}T12:00:00`).toISOString() : null,
+      }),
+    });
+    await loadDashboard();
+  }
+
+  async function deleteAppointment(id) {
+    if (!confirm("Excluir este atendimento?")) return;
+    await request(`/appointments/${id}`, { method: "DELETE" });
+    await loadDashboard();
+  }
+
+  async function editService(id) {
+    const name = prompt("Nome do servico:");
+    if (!name) return;
+    const priceRaw = prompt("Preco padrao (opcional):") || "";
+    await request(`/services/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name,
+        default_price: priceRaw ? Number(priceRaw.replace(",", ".")) : null,
+      }),
+    });
+    await loadDashboard();
+  }
+
+  async function deleteService(id) {
+    if (!confirm("Excluir este servico?")) return;
+    await request(`/services/${id}`, { method: "DELETE" });
+    await loadDashboard();
+  }
+
+  async function editUser(id) {
+    const name = prompt("Nome do usuario:");
+    if (!name) return;
+    const email = prompt("Email do usuario:");
+    if (!email) return;
+    const role = (prompt("Perfil (admin/staff):", "staff") || "staff").toLowerCase();
+    const password = prompt("Nova senha (opcional):") || "";
+    const active = confirm("Deixar usuario ativo?");
+    await request(`/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name,
+        email,
+        role,
+        password: password || null,
+        is_active: active,
+      }),
+    });
+    await loadDashboard();
+  }
+
+  async function toggleUser(id) {
+    await request(`/users/${id}/toggle-active`, { method: "POST" });
+    await loadDashboard();
+  }
+
   els.loginBtn.addEventListener("click", async () => {
     try {
       await login();
@@ -284,6 +423,19 @@
     createService().catch((error) => {
       els.serviceStatus.textContent = error.message;
     });
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.clientEdit) editClient(target.dataset.clientEdit).catch((error) => setStatus(error.message));
+    if (target.dataset.clientDelete) deleteClient(target.dataset.clientDelete).catch((error) => setStatus(error.message));
+    if (target.dataset.appointmentEdit) editAppointment(target.dataset.appointmentEdit).catch((error) => setStatus(error.message));
+    if (target.dataset.appointmentDelete) deleteAppointment(target.dataset.appointmentDelete).catch((error) => setStatus(error.message));
+    if (target.dataset.serviceEdit) editService(target.dataset.serviceEdit).catch((error) => setStatus(error.message));
+    if (target.dataset.serviceDelete) deleteService(target.dataset.serviceDelete).catch((error) => setStatus(error.message));
+    if (target.dataset.userEdit) editUser(target.dataset.userEdit).catch((error) => setStatus(error.message));
+    if (target.dataset.userToggle) toggleUser(target.dataset.userToggle).catch((error) => setStatus(error.message));
   });
 
   if (state.token) {
